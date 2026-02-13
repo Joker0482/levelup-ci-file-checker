@@ -1,4 +1,4 @@
- name: Required Files Check (PR)
+name: Required Files Check (PR)
 
 on:
   pull_request:
