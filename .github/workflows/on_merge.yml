@@ -1,4 +1,4 @@
- name: Required Files Check (Push to main)
+name: Required Files Check (Push to main)
 
 on:
   push:
