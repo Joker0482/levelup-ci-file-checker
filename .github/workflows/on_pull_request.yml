@@ -30,7 +30,7 @@ jobs:
         if: success()
         shell: bash
         run: |
-          LOG_STREAM="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          LOG_STREAM="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
           MESSAGE="{\"workflow\":\"${GITHUB_WORKFLOW}\",\"actor\":\"${GITHUB_ACTOR}\",\"sha\":\"${GITHUB_SHA}\",\"timestamp\":\"${LOG_STREAM}\"}"
 
           aws logs create-log-stream \
@@ -38,6 +38,7 @@ jobs:
             --log-stream-name "$LOG_STREAM" || true
 
           aws logs put-log-events \
-            --log-group-name "${{ secrets.LOG_GROUP_NAME }}" \
-            --log-stream-name "$LOG_STREAM" \
-            --log-events timestamp=$(date -u +%s%3N),message="$MESSAGE"
+          --log-group-name "${{ secrets.LOG_GROUP_NAME }}" \
+          --log-stream-name "$LOG_STREAM" \
+          --log-events "[{\"timestamp\":$(date -u +%s%3N),\"message\":\"$MESSAGE\"}]"
+
