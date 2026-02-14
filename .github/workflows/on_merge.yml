@@ -31,13 +31,16 @@ jobs:
       - name: Send audit log to CloudWatch
         if: success()
         shell: bash
+        env:
+          LOG_GROUP_NAME: ${{ secrets.LOG_GROUP_NAME }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
         run: |
           set -euo pipefail
 
-          # Safe log stream name (no colons)
+          # Valid log stream name (no colons)
           LOG_STREAM="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
 
-          # Build JSON safely (no manual escaping headaches)
+          # Build audit message JSON (stored as a string)
           MESSAGE="$(jq -nc \
             --arg workflow "${GITHUB_WORKFLOW}" \
             --arg actor "${GITHUB_ACTOR}" \
@@ -45,15 +48,21 @@ jobs:
             --arg timestamp "${LOG_STREAM}" \
             '{workflow:$workflow, actor:$actor, sha:$sha, timestamp:$timestamp}')"
 
-          # Ensure log stream exists (don't fail if it already exists)
-          aws logs create-log-stream \
-            --log-group-name "${{ secrets.LOG_GROUP_NAME }}" \
-            --log-stream-name "${LOG_STREAM}" \
-            2>/dev/null || true
+          # Create log group if it doesn't exist (safe to ignore "already exists")
+          aws logs create-log-group \
+            --region "$AWS_REGION" \
+            --log-group-name "$LOG_GROUP_NAME" 2>/dev/null || true
 
-          # Put log event - message MUST be a string
+          # Create stream if it doesn't exist (safe to ignore "already exists")
+          aws logs create-log-stream \
+            --region "$AWS_REGION" \
+            --log-group-name "$LOG_GROUP_NAME" \
+            --log-stream-name "$LOG_STREAM" 2>/dev/null || true
+
+          # Put log event (message must be a string)
           aws logs put-log-events \
-            --log-group-name "${{ secrets.LOG_GROUP_NAME }}" \
-            --log-stream-name "${LOG_STREAM}" \
+            --region "$AWS_REGION" \
+            --log-group-name "$LOG_GROUP_NAME" \
+            --log-stream-name "$LOG_STREAM" \
             --log-events "$(jq -nc --arg msg "$MESSAGE" \
               '[{timestamp:(now*1000|floor), message:$msg}]')"
