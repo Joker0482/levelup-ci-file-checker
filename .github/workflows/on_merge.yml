@@ -18,5 +18,51 @@ jobs:
         with:
           python-version: "3.x"
 
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
       - name: Run file presence check
         run: python scripts/check_required_files.py
+
+      - name: Send audit log to CloudWatch
+        if: success()
+        shell: bash
+        env:
+          LOG_GROUP_NAME: levelup-ci-audit
+          AWS_REGION: us-east-1
+        run: |
+          set -euo pipefail
+
+          # Valid log stream name (no colons)
+          LOG_STREAM="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
+
+          # Build audit message JSON (stored as a string)
+          MESSAGE="$(jq -nc \
+            --arg workflow "${GITHUB_WORKFLOW}" \
+            --arg actor "${GITHUB_ACTOR}" \
+            --arg sha "${GITHUB_SHA}" \
+            --arg timestamp "${LOG_STREAM}" \
+            '{workflow:$workflow, actor:$actor, sha:$sha, timestamp:$timestamp}')"
+
+          # Create log group if it doesn't exist (safe to ignore "already exists")
+          aws logs create-log-group \
+            --region "$AWS_REGION" \
+            --log-group-name "$LOG_GROUP_NAME" 2>/dev/null || true
+
+          # Create stream if it doesn't exist (safe to ignore "already exists")
+          aws logs create-log-stream \
+            --region "$AWS_REGION" \
+            --log-group-name "$LOG_GROUP_NAME" \
+            --log-stream-name "$LOG_STREAM" 2>/dev/null || true
+
+          # Put log event (message must be a string)
+          aws logs put-log-events \
+            --region "$AWS_REGION" \
+            --log-group-name "$LOG_GROUP_NAME" \
+            --log-stream-name "$LOG_STREAM" \
+            --log-events "$(jq -nc --arg msg "$MESSAGE" \
+              '[{timestamp:(now*1000|floor), message:$msg}]')"
