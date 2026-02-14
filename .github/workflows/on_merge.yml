@@ -32,7 +32,7 @@ jobs:
         if: success()
         shell: bash
         env:
-          LOG_GROUP_NAME: ${{ secrets.LOG_GROUP_NAME }}
+          LOG_GROUP_NAME: levelup-ci-audit
           AWS_REGION: us-east-1
         run: |
           set -euo pipefail
