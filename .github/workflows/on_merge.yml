@@ -17,6 +17,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.x"
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -26,19 +27,33 @@ jobs:
 
       - name: Run file presence check
         run: python scripts/check_required_files.py
+
       - name: Send audit log to CloudWatch
         if: success()
         shell: bash
         run: |
-          LOG_STREAM="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
-          MESSAGE="{\"workflow\":\"${GITHUB_WORKFLOW}\",\"actor\":\"${GITHUB_ACTOR}\",\"sha\":\"${GITHUB_SHA}\",\"timestamp\":\"${LOG_STREAM}\"}"
+          set -euo pipefail
 
+          # Safe log stream name (no colons)
+          LOG_STREAM="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
+
+          # Build JSON safely (no manual escaping headaches)
+          MESSAGE="$(jq -nc \
+            --arg workflow "${GITHUB_WORKFLOW}" \
+            --arg actor "${GITHUB_ACTOR}" \
+            --arg sha "${GITHUB_SHA}" \
+            --arg timestamp "${LOG_STREAM}" \
+            '{workflow:$workflow, actor:$actor, sha:$sha, timestamp:$timestamp}')"
+
+          # Ensure log stream exists (don't fail if it already exists)
           aws logs create-log-stream \
             --log-group-name "${{ secrets.LOG_GROUP_NAME }}" \
-            --log-stream-name "$LOG_STREAM" || true
+            --log-stream-name "${LOG_STREAM}" \
+            2>/dev/null || true
 
+          # Put log event - message MUST be a string
           aws logs put-log-events \
             --log-group-name "${{ secrets.LOG_GROUP_NAME }}" \
-            --log-stream-name "$LOG_STREAM" \
-            --log-events "[{\"timestamp\":$(date -u +%s%3N),\"message\":\"$MESSAGE\"}]"
-
+            --log-stream-name "${LOG_STREAM}" \
+            --log-events "$(jq -nc --arg msg "$MESSAGE" \
+              '[{timestamp:(now*1000|floor), message:$msg}]')"
