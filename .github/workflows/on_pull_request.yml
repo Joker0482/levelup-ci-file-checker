@@ -32,7 +32,8 @@ jobs:
         if: success()
         shell: bash
         env:
-          LOG_GROUP_NAME: levelup-ci-audit
+          LOG_GROUP_NAME: /github-actions/required-files-checker/beta
+
           AWS_REGION: us-east-1
         run: |
           set -euo pipefail
